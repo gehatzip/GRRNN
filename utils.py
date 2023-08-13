@@ -430,14 +430,6 @@ def read_EnergyCo(project_root_path):
 
   return energyco
 
-def read_NASDAQ100(project_root_path):
-  nasdaq_path = project_root_path + 'datasets/other/NASDAQ100/'
-  nasdaq_file = nasdaq_path + 'nasdaq100_padding.csv'
-
-  nasdaq = pd.read_csv(nasdaq_file, index_col=False, header=0, sep=',')
-
-  return nasdaq
-
 
 def read_poll(path):
 
@@ -630,3 +622,4 @@ def align_concat(df1, df2):
     df1_aligned, df2_aligned = df1.align(df2, join='inner', axis=0)
     df1_df2 = pd.concat([df1_aligned, df2_aligned], axis =1 )
     return df1_df2
+

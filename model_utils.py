@@ -55,12 +55,3 @@ def optimizer_from_type(optimizer_type, model, learning_rate, weight_decay=0.0):
     return torch.optim.SGD(parameters, lr =learning_rate, weight_decay = weight_decay)
 
 
-
-def loss_for_model(model_type):
-
-  if model_type == 'forecast':
-
-    return nn.MSELoss()
-  else:
-    return nn.CrossEntropyLoss()
-

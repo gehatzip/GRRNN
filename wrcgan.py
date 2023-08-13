@@ -3,8 +3,6 @@ from torch import nn, autograd
 import matplotlib.pyplot as plt
 from model_utils import reset_weights
 
-from rcgan import cgan_cond, noise_like_sequence
-
 # Wasserstein GAN obtained from: https://medium.com/dejunhuang/implementing-gan-and-wgan-in-pytorch-551099afde3c
 
 class lstm_generator(nn.Module):
@@ -218,6 +216,19 @@ class WRCGAN(nn.Module):
 
 
 
+def cgan_cond(cond_history):
+    # cond = deltas(cond_history)
+    cond = cond_history
+    return cond
+
+
+
+def noise_like_sequence(shape, device):
+
+    noise = torch.randn(shape, device=device) # batch_size x input_window x n_features
+    return noise
+
+
 def train_iteration_WRCGAN(gan, X_history, y_history, gan_gen_optimizer, gan_disc_optimizer):
 
     seq_dim = 1
@@ -301,4 +312,24 @@ def train_iteration_WRCGAN(gan, X_history, y_history, gan_gen_optimizer, gan_dis
     G_loss = -prob_fake.mean() + gan.L1_coeff*gan.L1_criterion(fake_y_history, y_history)
 
     return G_loss, D_loss, gen_hidden, gen_cell, fake_y_history
+
+
+
+def deltas(y_windowed):
+
+    diffs = torch.empty(y_windowed.shape, device=y_windowed.device)
+
+    for i in range(y_windowed.shape[0]):
+        if i == 0:
+            for j in range(y_windowed.shape[1]):
+                if j == 0:
+                    diffs[i,j,:] = torch.zeros((y_windowed.shape[2]), device=y_windowed.device)
+                else:
+                    diffs[i,j,:] = y_windowed[i,j,:] - y_windowed[i,j-1,:]
+        else:
+            diffs[i,:,:] = y_windowed[i,:,:] - y_windowed[i-1,:,:]
+
+    return diffs
+
+
 

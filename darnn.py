@@ -6,13 +6,12 @@ import datetime as dt, itertools, pandas as pd, matplotlib.pyplot as plt, numpy 
 
 
 from importlib import reload
-from rcgan import RCGAN, LSRCGAN, train_iteration_RCGAN, cgan_cond, noise_like_sequence
-from wrcgan import WRCGAN, train_iteration_WRCGAN
+from wrcgan import WRCGAN, train_iteration_WRCGAN, cgan_cond, noise_like_sequence
 from forecasters import MultiStepForecaster
 import encoders
 import decoders
 
-from utils import unwindow_series, window_series, random_permute_indices, unfold, all_metric_lists, append_all_metrics, mean_metrics
+from utils import unwindow_series, window_series, random_permute_indices, unfold, all_metric_lists, append_all_metrics, mean_metrics, plot_windowed
 
 reload(encoders)
 reload(decoders)
@@ -186,6 +185,17 @@ class da_rnn:
         return y_pred, loss, gen_loss, disc_loss, gen_y_history
 
 
+
+def plot_real_vs_gen(y_real, y_gen):
+
+  for i in range(y_real.shape[2]):
+    print('i ' + str(i))
+    
+    y_gen_pred_feat_i = torch.cat((y_gen[:,:,i].unsqueeze(-1), y_real[:,:,i].unsqueeze(-1)), dim=2)
+    y_gen_pred_feat_i_np = y_gen_pred_feat_i.detach().cpu().numpy()
+
+    plot_windowed(y_gen_pred_feat_i_np)
+    plt.show()
 
 
 
