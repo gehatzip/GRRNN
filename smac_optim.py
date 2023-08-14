@@ -17,6 +17,7 @@ from series import normalize, denormalize, denormalize_fold_dict
 
 from math import isinf
 from sys import float_info
+from os import linesep
 
 class SMACModelCrossValidRunner:
 
@@ -213,6 +214,44 @@ def smac_train_validation_testing_optimize(forecast_ts, target_ts, forecast_hori
     plot_real_vs_predicted(target_ts, target_ts_pred, pred_start)
 
 
+
+def smac_config_to_file(config, file = 'optimized_configuration.txt'):
+
+    f = open(file, 'w')
+
+    for hparam in config.items():
+        f.write(hparam[0] + ' ' + str(hparam[1]) + linesep)
+
+    f.close()
+
+
+def series_preprocess(forecast_ts, target_ts, forecast_scaler, target_scaler):
+    # Preprocess
+    forecast_ts_norm = normalize(forecast_ts, forecast_scaler)
+    target_ts_norm = normalize(target_ts, target_scaler)
+
+    return forecast_ts_norm, target_ts_norm
+
+
+def series_train_valid_test_split(forecast_ts, target_ts):
+    # train, validation and test split
+    forecast_ts_train_valid, target_ts_train_valid, forecast_ts_test, target_ts_test = series_split(forecast_ts_norm, target_ts_norm, ratio=0.8)
+    forecast_ts_train, target_ts_train, forecast_ts_valid, target_ts_valid = series_split(forecast_ts_train_valid, target_ts_train_valid, ratio=0.8)
+
+    return forecast_ts_train, target_ts_train, forecast_ts_valid, target_ts_valid, forecast_ts_test, target_ts_test
+
+
+def smac_train_validation_optimize(forecast_ts_train, target_ts_train, forecast_ts_valid, target_ts_valid, forecast_horizon):
+
+    optimized_config = smac_train_test_optimize(forecast_ts_train, target_ts_train, forecast_ts_valid, target_ts_valid, forecast_horizon)
+
+    print('\n Optimized configuration: \n')
+    print(optimized_config)
+
+    smac_config_to_file(optimized_config)
+    
+
+
 from series import plot_np_array
 
 def train_test_config(config, forecast_ts, target_ts, forecast_horizon):
@@ -403,3 +442,89 @@ def smac_train_test(config, forecast_ts_train, target_ts_train, forecast_ts_test
 
     # return loss.item()
     return mean_metric(all_metrics)
+
+
+
+def smac_train(config, forecast_ts_train, target_ts_train, forecast_horizon, verbose = False, model_save_file = 'model.pt'):
+
+    activ_func = None
+
+    if 'activ_func' in config:
+        activ_func = config['activ_func']
+
+    window_size = int(config['window_size'])
+
+    X_train, y_train = prepare_windowed_series(forecast_ts_train, target_ts_train, window_size, forecast_horizon)
+
+    if (X_train is None) or (y_train is None):
+        print('Empty windowed series - invalid train series!')
+        return float_info.max
+
+    hidden_layers = config['hidden_layers']
+
+    model = create_model(X_train.shape[1], forecast_horizon, X_train.shape[2], y_train.shape[-1]
+                         , config['hidden_dim'], hidden_layers, activ_func, config['dropout'], config['L1_coeff'], config['gan_disc_decay'])
+
+    if verbose:
+        print('Trainable parameters: ' + str(model.trainable_parameters()))
+
+    X_train_tensor = torch.from_numpy(X_train).type(torch.FloatTensor).to(model.get_device())
+    y_train_tensor = torch.from_numpy(y_train).type(torch.FloatTensor).to(model.get_device())
+
+    
+    model.train(X_train_tensor, y_train_tensor, config, verbose)
+
+    torch.save(model, model_save_file)
+
+
+def smac_test(config, forecast_ts_test, target_ts_test, forecast_horizon, verbose = False, extra_data = None, model_save_file = 'model.pt'):
+
+    window_size = int(config['window_size'])
+
+    X_test, y_test = prepare_windowed_series(forecast_ts_test, target_ts_test, window_size, forecast_horizon, forecast_horizon) # By using forecast_horizon as step in test windowed series the target windows will be non-overlapping!
+
+    if (X_test is None) or (y_test is None):
+        print('Empty windowed series - invalid test series!')
+        return float_info.max
+
+    model = torch.load(model_save_file)
+
+    X_test_tensor = torch.from_numpy(X_test).type(torch.FloatTensor).to(model.get_device())
+    y_test_tensor = torch.from_numpy(y_test).type(torch.FloatTensor).to(model.get_device())
+
+    y_pred, loss = model.test(X_test_tensor, y_test_tensor)
+
+    window_size = X_test.shape[1]
+    y_target = y_test[:,window_size:,:]
+
+    y_pred_np = y_pred.detach().cpu().numpy()
+
+    all_metrics = calc_all_error_metrics(y_target, y_pred_np)
+
+    print('Test loss {}'.format(loss))
+    print('Error metrics: ' + str(all_metrics))
+
+    if extra_data != None:
+      if y_pred_np.ndim < 3:
+        y_pred_np = np.expand_dims(y_pred_np, axis=1) # n_samples x forecast_horizon(=1) x n_features
+
+      y_pred_unwin = unwindow_series(y_pred_np, forecast_horizon)
+      extra_data['predictions'] = y_pred_unwin
+
+    # return loss.item()
+    return mean_metric(all_metrics)
+
+
+def smac_plot(optimized_config, target_ts, target_ts_train_valid, target_scaler, extra_data):
+
+    last_target_ts_train_valid = target_ts[ target_ts_train_valid.shape[0]-1, :]
+    target_ts_pred = denormalize(extra_data['predictions'], target_scaler, last_target_ts_train_valid)
+
+    pred_start = target_ts_train_valid.shape[0] + int(optimized_config['window_size'])
+
+    target_ts_aligned = target_ts[pred_start:pred_start+target_ts_pred.shape[0], :]
+
+    all_metrics = calc_all_error_metrics(target_ts_aligned, target_ts_pred)
+    print('Initial series error metrics: ' + str(all_metrics))
+    
+    plot_real_vs_predicted(target_ts, target_ts_pred, pred_start)

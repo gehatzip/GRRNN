@@ -38,3 +38,22 @@ def dataset_cmd_arg():
     print('dataset: ' + dataset)
 
     return dataset
+
+
+
+def mode_cmd_arg():
+    modes_all = ['optimize', 'train', 'test']
+
+    mode = modes_all[0]
+
+    if '--mode' in sys.argv:
+
+        index = sys.argv.index('--mode')
+
+        if index < len(sys.argv)-1:
+            if sys.argv[index+1] in modes_all:
+                mode = sys.argv[index+1]
+
+    print('mode: ' + mode)
+
+    return mode
