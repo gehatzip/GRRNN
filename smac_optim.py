@@ -10,7 +10,7 @@ from smac.scenario.scenario import Scenario
 
 from darnn import DARNNForecaster
 
-from utils import error_metric_func, window_series, unwindow_series, fold, series_split, plot_real_vs_predicted, calc_all_error_metrics, plot_real_vs_predicted_folds
+from utils import error_metric_func, window_series, unwindow_series, fold, series_split, plot_real_vs_predicted, calc_all_error_metrics
 
 from sklearn.preprocessing import MinMaxScaler
 from series import normalize, denormalize, denormalize_fold_dict
@@ -134,41 +134,6 @@ def smac_scenario():
     return scenario
 
 
-def smac_cross_validation_optimize(forecast_ts, target_ts, forecast_horizon):
-
-    scenario = smac_scenario()
-
-    tae_runner_owner = SMACModelCrossValidRunner(forecast_ts, target_ts, forecast_horizon, config_cross_validation_train)
-
-    smac = SMAC4HPO(scenario=scenario, rng=np.random.RandomState(0), tae_runner=tae_runner_owner.run)
-
-    best_config = smac.optimize()
-
-    return best_config
-
-
-def smac_cross_validation(forecast_ts, target_ts, forecast_horizon):
-
-    # Preprocess
-    forecast_scaler = MinMaxScaler()
-    target_scaler = MinMaxScaler()
-    forecast_ts_norm = normalize(forecast_ts, forecast_scaler)
-    target_ts_norm = normalize(target_ts, target_scaler)
-
-    optimized_config = smac_cross_validation_optimize(forecast_ts_norm, target_ts_norm, forecast_horizon)
-
-    print('\n Optimized configuration: \n')
-    print(optimized_config)
-    
-    extra_data = {}
-
-    config_cross_validation_train(optimized_config, forecast_ts_norm, target_ts_norm, forecast_horizon, verbose=False, extra_data = extra_data)
-
-    denormalize_fold_dict(extra_data['predictions'], target_scaler)
-
-    plot_real_vs_predicted_folds(target_ts, extra_data['predictions'])
-
-
 def smac_train_test_optimize(forecast_ts_train, target_ts_train, forecast_ts_test, target_ts_test, forecast_horizon):
 
     scenario = smac_scenario()
@@ -180,39 +145,6 @@ def smac_train_test_optimize(forecast_ts_train, target_ts_train, forecast_ts_tes
     best_config = smac.optimize()
 
     return best_config
-
-def smac_train_validation_testing_optimize(forecast_ts, target_ts, forecast_horizon):
-
-    # Preprocess
-    forecast_scaler = MinMaxScaler()
-    target_scaler = MinMaxScaler()
-    forecast_ts_norm = normalize(forecast_ts, forecast_scaler)
-    target_ts_norm = normalize(target_ts, target_scaler)
-
-    # train, validation and test split
-    forecast_ts_train_valid, target_ts_train_valid, forecast_ts_test, target_ts_test = series_split(forecast_ts_norm, target_ts_norm, ratio=0.8)
-    forecast_ts_train, target_ts_train, forecast_ts_valid, target_ts_valid = series_split(forecast_ts_train_valid, target_ts_train_valid, ratio=0.8)
-
-    optimized_config = smac_train_test_optimize(forecast_ts_train, target_ts_train, forecast_ts_valid, target_ts_valid, forecast_horizon)
-
-    print('\n Optimized configuration: \n')
-    print(optimized_config)
-    
-    extra_data = {}
-    smac_train_test(optimized_config, forecast_ts_train_valid, target_ts_train_valid, forecast_ts_test, target_ts_test, forecast_horizon, verbose=True, extra_data = extra_data)
-
-    last_target_ts_train_valid = target_ts[ target_ts_train_valid.shape[0]-1, :]
-    target_ts_pred = denormalize(extra_data['predictions'], target_scaler, last_target_ts_train_valid)
-
-    pred_start = target_ts_train_valid.shape[0] + int(optimized_config['window_size'])
-
-    target_ts_aligned = target_ts[pred_start:pred_start+target_ts_pred.shape[0], :]
-
-    all_metrics = calc_all_error_metrics(target_ts_aligned, target_ts_pred)
-    print('Initial series error metrics: ' + str(all_metrics))
-    
-    plot_real_vs_predicted(target_ts, target_ts_pred, pred_start)
-
 
 
 def smac_config_to_file(config, file = 'optimized_configuration.txt'):
@@ -249,41 +181,7 @@ def smac_train_validation_optimize(forecast_ts_train, target_ts_train, forecast_
     print(optimized_config)
 
     smac_config_to_file(optimized_config)
-    
 
-
-from series import plot_np_array
-
-def train_test_config(config, forecast_ts, target_ts, forecast_horizon):
-
-    # Preprocess
-    forecast_scaler = MinMaxScaler()
-    target_scaler = MinMaxScaler()
-    forecast_ts_norm = normalize(forecast_ts, forecast_scaler)
-    target_ts_norm = normalize(target_ts, target_scaler)
-
-    # train, test split
-    forecast_ts_train, target_ts_train, forecast_ts_test, target_ts_test = series_split(forecast_ts_norm, target_ts_norm, ratio=0.8)
-
-    print('\n Configuration: \n')
-    print(config)
-
-    extra_data = {}
-    
-    smac_train_test(config, forecast_ts_train, target_ts_train, forecast_ts_test, target_ts_test, forecast_horizon, verbose=True, extra_data = extra_data)
-
-    last_target_ts_train = target_ts[ target_ts_train.shape[0]-1, :]
-    target_ts_pred = denormalize(extra_data['predictions'], target_scaler, last_target_ts_train)
-
-    pred_start = target_ts_train.shape[0] + int(config['window_size'])
-
-    target_ts_aligned = target_ts[pred_start:pred_start+target_ts_pred.shape[0], :]
-
-    all_metrics = calc_all_error_metrics(target_ts_aligned, target_ts_pred)
-    print('Initial series error metrics: ' + str(all_metrics))
-
-    plot_real_vs_predicted(target_ts, target_ts_pred, pred_start)
-    
 
 
 def hyperparams_from_file(filename):
@@ -305,12 +203,6 @@ def hyperparams_from_file(filename):
                 print('{}: {}'.format(words[0], words[1]))
 
     return config
-
-
-def smac_initial_config():
-    # Get with sample configuration
-    configspace = get_initial_config_space()
-    return configspace.sample_configuration()
 
 
 def smac_config_from_file(filename):
@@ -355,23 +247,6 @@ def smac_config_from_dict(cfg_dict):
         config['gan_disc_decay'] = float(cfg_dict['gan_disc_decay'])
 
     return config
-
-
-def cross_validation_config(config, forecast_ts, target_ts, forecast_horizon):
-
-    # Preprocess
-    forecast_scaler = MinMaxScaler()
-    target_scaler = MinMaxScaler()
-    forecast_ts_norm = normalize(forecast_ts, forecast_scaler)
-    target_ts_norm = normalize(target_ts, target_scaler)
-
-    extra_data = {}
-
-    config_cross_validation_train(config, forecast_ts_norm, target_ts_norm, forecast_horizon, verbose = False, extra_data = extra_data)
-
-    denormalize_fold_dict(extra_data['predictions'], target_scaler)
-
-    plot_real_vs_predicted_folds(target_ts, extra_data['predictions'])
 
 
 def mean_metric(all_metrics):

@@ -13,15 +13,6 @@ def normalize(df):
   return scaler, df_norm
 
 
-def df_split(df, split_ratio):
-  rows = len(df.index)
-  split_row = int(rows * split_ratio)
-  df1 = df.iloc[:split_row,:]
-  df2 = df.iloc[split_row:,:]
-
-  return df1, df2
-
-
 def window_series(series, window_size, offset = 0, step = 1):
     # Converts series (N_time x N_features) to series of windows (N_windows x window_size x N_features)
     # Windows start from the 'offset' given and shift by 'step'.
@@ -219,81 +210,6 @@ def plot_real_vs_predicted(real, predicted, predicted_offset = 0, feature_names 
         plot_real_vs_predicted_feature(ax, real, predicted, predicted_offset, feature_names[0])
       else:
         plot_real_vs_predicted_feature(ax, real, predicted, predicted_offset)
-    
-  plt.show()
-
-
-def plot_selected_features(real, predicted, predicted_offset = 0, feature_names = None, feature_pos = None, x_labels = None):
-    n_selected = len(feature_names)
-    fig, axs = plt.subplots(1, n_selected, figsize = (20,8))
-    for i in range(n_selected):
-        plot_real_vs_predicted_feature(axs[i], real[:,feature_pos[i]], predicted[:,feature_pos[i]], predicted_offset, feature_names[i], x_labels)
-    plt.show()
-
-
-
-def plot_series(ax, time, series, label, offset = 0):
-  t_pred = time+offset
-  ax.plot(t_pred[:series.shape[0]], series, label=label)
-
-def plot_limits_and_title(ax, real, predicted, title):
-
-  ymin = min(real.min(), predicted.min())
-  ymax = max(real.max(), predicted.max())
-  stdev = ymax - ymin
-
-  ax.set_ylim(([ymin-stdev, ymax+stdev]))
-  ax.set_title(title)
-  
-  ax.legend()
-
-
-
-def plot_real_vs_predicted_folds(real, predicted_folds, feature_names = None):
-
-  first_predicted = next(iter(predicted_folds.items()))[1]
-
-  n_features = first_predicted.shape[1]
-
-  time = np.arange(real.shape[0])
-
-  if n_features > 1:
-
-    fig, axs = plt.subplots(1, n_features, figsize = (16,8))
-
-    for i in range(n_features):
-
-      if feature_names != None and len(feature_names) > i:
-        feature_name = feature_names[i]
-      else:
-        feature_name = 'Feature ' + str(i)
-
-      plot_series(axs[i], time, real[:,i], 'Real')
-
-      for predicted_offset, predicted in predicted_folds.items():
-        
-        plot_series(axs[i], time, predicted[:,i], 'Predicted', predicted_offset)
-
-      plot_limits_and_title(axs[i], real[:,i], predicted[:,i], feature_name)
-
-  else:
-
-    fig, ax = plt.subplots(figsize = (16,8))
-
-    plot_series(ax, time, real, 'Real')
-
-    for predicted_offset, predicted in predicted_folds.items():
-
-      plot_series(ax, time, predicted, 'Predicted', predicted_offset)
-
-      if feature_names != None and len(feature_names) > 0:
-        feature_name = feature_names[0]
-      else:
-        feature_name = 'Feature'
-
-      plot_limits_and_title(ax, real, predicted, feature_name)
-
-
     
   plt.show()
 

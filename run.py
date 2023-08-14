@@ -9,7 +9,7 @@ import numpy as np
 from sklearn.preprocessing import MinMaxScaler
 
 from utils import read_ETD, read_SML2010, read_AirQuality, read_EnergyCo, read_poll_all_parties, series_split
-from smac_optim import smac_cross_validation, cross_validation_config, smac_cross_validation_optimize, train_test_config, smac_config_from_file, smac_config_to_file, smac_train_validation_testing_optimize, smac_initial_config, smac_train_validation_optimize, smac_train, series_preprocess, smac_test, smac_plot
+from smac_optim import smac_config_from_file, smac_config_to_file, smac_train_validation_optimize, smac_train, series_preprocess, smac_test, smac_plot
 from arg_handlers import horizon_cmd_arg, dataset_cmd_arg, mode_cmd_arg
 
 from series import normalize
@@ -88,50 +88,6 @@ def main():
         smac_test(optimized_config, forecast_ts_test, target_ts_test, forecast_horizon, verbose = False, extra_data = extra_data)
         smac_plot(optimized_config, target_ts, target_ts_train_valid, target_scaler, extra_data)
 
-
-    # Cross validation with SMAC-optimized hyperparameters
-    """
-    smac_cross_validation(forecast_ts, target_ts, forecast_horizon)
-    """
-    
-    """
-    smac_train_validation_testing_optimize(forecast_ts, target_ts, forecast_horizon)
-    """
-
-    # Cross-validation-ptimized configurarion
-    
-    """
-    # Preprocessing
-    forecast_scaler = MinMaxScaler()
-    target_scaler = MinMaxScaler()
-    forecast_ts_norm = normalize(forecast_ts, forecast_scaler)
-    target_ts_norm = normalize(target_ts, target_scaler)
-    config = smac_cross_validation_optimize(forecast_ts_norm, target_ts_norm, forecast_horizon)
-    """
-
-    # Initial configuration
-    """
-    config = smac_initial_config()
-    """
-
-    # Configuration from file
-    """
-    config = smac_config_from_file('initial_configuration.txt')
-    """
-
-    # Cross validation with configuration
-    """
-    cross_validation_config(config, forecast_ts, target_ts, forecast_horizon)
-    """
-
-
-    # Train-test with coniguration
-    """
-    train_test_config(config, forecast_ts, target_ts, forecast_horizon)
-    """
-
-
-    
 
 
 

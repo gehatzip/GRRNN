@@ -38,22 +38,3 @@ def denormalize(arr, scaler, bias=None):
 def denormalize_fold_dict(fold_dict, scaler, bias=None):
     for offset in fold_dict:
         fold_dict[offset] = denormalize(fold_dict[offset], scaler, bias)
-
-
-import matplotlib.pyplot as plt
-
-def plot_series(ax, series):
-  t = np.arange(series.shape[0])
-  ax.plot(t, series, label='Real')
-
-
-def plot_np_array(arr):
-
-    n_series = arr.shape[-1]
-
-    fig, axs = plt.subplots(1, n_series, figsize = (16,8))
-
-    for i in range(n_series):
-        plot_series(axs[i], arr[:,i])
-
-    plt.show()
