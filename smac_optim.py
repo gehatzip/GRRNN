@@ -8,7 +8,7 @@ from smac.facade.smac_bb_facade import SMAC4BB
 from smac.facade.smac_hpo_facade import SMAC4HPO
 from smac.scenario.scenario import Scenario
 
-from darnn import DARNNForecaster
+from darnn import GRRNNForecaster
 
 from utils import error_metric_func, window_series, unwindow_series, fold, series_split, plot_real_vs_predicted, calc_all_error_metrics
 
@@ -81,7 +81,7 @@ def get_initial_config_space():
 
 def create_model(window_size, forecast_horizon, input_size, output_size, hidden_size, hidden_layers, activ_func=None, dropout=0.0, L1_coeff=1.0, gan_disc_decay=0.0):
 
-    model = DARNNForecaster(input_size, output_size, hidden_size, hidden_layers, window_size, dropout, L1_coeff, gan_disc_decay, True)
+    model = GRRNNForecaster(input_size, output_size, hidden_size, hidden_layers, window_size, dropout, L1_coeff, gan_disc_decay)
 
     return model
 

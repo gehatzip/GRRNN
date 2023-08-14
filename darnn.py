@@ -19,32 +19,28 @@ reload(decoders)
 from model_utils import optimizer_from_type, reset_weights
 
 ##########
-# da_rnn #
+# gr_rnn #
 ##########
-class da_rnn:
+class gr_rnn:
     
     def __init__(self, gs_input_size, fs_input_size, input_window
-                    , learning_rate = 0.01, generative_learning = True
-                    , cell_dimension = 64, num_hidden_layers = 1, dropout=0.0, L1_coeff = 1.0, gan_disc_decay=0.0, device = torch.device('cpu')):
+                    , learning_rate = 0.01, cell_dimension = 64, num_hidden_layers = 1
+                    , dropout=0.0, L1_coeff = 1.0, gan_disc_decay=0.0, device = torch.device('cpu')):
 
         # gs_input_size: Number of features of the generating series.
         # fs_input_size: Number of features of the series to be forecasted.
 
         self.fs_input_size = fs_input_size # Forecast series: Number of features
-        self.input_window = input_window # Input window is stored as parameter in the DARNN because the encoder attention layer is sized by that.
-        self.generative_learning = generative_learning # Cut-off RCGAN if false
+        self.input_window = input_window # Input window is stored as parameter in the GRRNN because the encoder attention layer is sized by that.
         self.gan_disc_decay = gan_disc_decay
 
         self.decoder = decoders.decoder(encoder_hidden_size = cell_dimension,
                             decoder_hidden_size = cell_dimension,
                             y_input_size = fs_input_size, num_hidden_layers = num_hidden_layers, device=device)
 
-        if generative_learning:
-            self.encoder = encoders.encoder(input_size = cell_dimension, hidden_size = cell_dimension
-                                , input_window = input_window, num_hidden_layers = num_hidden_layers, device = device)
-        else:
-            self.encoder = encoders.encoder(input_size = gs_input_size, hidden_size = cell_dimension
-                                , input_window = input_window, num_hidden_layers = num_hidden_layers, device = device)
+        self.encoder = encoders.encoder(input_size = cell_dimension, hidden_size = cell_dimension
+                              , input_window = input_window, num_hidden_layers = num_hidden_layers, device = device)
+
 
         # GAN input_size = X_input_size + y_input_size + noise_size (chosen equal to: y_input_size)
         # GAN hidden_size = X_input_size + y_input_size
@@ -89,28 +85,24 @@ class da_rnn:
 
         input_window = X.shape[1]
 
-        if self.generative_learning:
+        # y_history is the condition of the CGAN.
+        if len(y_history.shape) < 2: # If y_history is a single-feature series expand to two dimensions
+            y_history = y_history.unsqueeze(2) # batch_size x input_window x n_forecast_features
 
-            # y_history is the condition of the CGAN.
-            if len(y_history.shape) < 2: # If y_history is a single-feature series expand to two dimensions
-                y_history = y_history.unsqueeze(2) # batch_size x input_window x n_forecast_features
+        noise = noise_like_sequence(y_history.shape, X.device)
+        cond = cgan_cond(X)
 
-            noise = noise_like_sequence(y_history.shape, X.device)
-            cond = cgan_cond(X)
+        gen_input = torch.cat((cond, noise), dim=2) # batch_size x input_window x (fs_input_size + noise_input_size(=fs_input_size) )
+        ## gen_input = cond # batch_size x input_window x fs_input_size
+        gen_y_history, gen_hidden, gen_cell = self.gan.G(gen_input) 
+        # gen_y_history: batch_size x input_window x n_forecast_features
+        # gen_hidden: n_layers x batch_size x input_window x hidden_dim
 
-            gen_input = torch.cat((cond, noise), dim=2) # batch_size x input_window x (fs_input_size + noise_input_size(=fs_input_size) )
-            ## gen_input = cond # batch_size x input_window x fs_input_size
-            gen_y_history, gen_hidden, gen_cell = self.gan.G(gen_input) 
-            # gen_y_history: batch_size x input_window x n_forecast_features
-            # gen_hidden: n_layers x batch_size x input_window x hidden_dim
+        # Concatenate the GAN-generated y_history with X and pass to the encoder
+        # encoder_input = torch.cat((X, gen_hidden[-1,:,:,:]), dim=2)
+        # encoder_input = torch.cat((y_history, gen_hidden[-1,:,:,:]), dim=2)
+        encoder_input = gen_hidden[-1,:,:,:]
 
-            # Concatenate the GAN-generated y_history with X and pass to the encoder
-            # encoder_input = torch.cat((X, gen_hidden[-1,:,:,:]), dim=2)
-            # encoder_input = torch.cat((y_history, gen_hidden[-1,:,:,:]), dim=2)
-            encoder_input = gen_hidden[-1,:,:,:]
-            
-        else:
-            encoder_input = X
 
         _, decoder_input = self.encoder(encoder_input)
 
@@ -122,10 +114,7 @@ class da_rnn:
 
         outp,_ = self.decoder(decoder_input, y_history_last, forecast_horizon, gen_y_target)
 
-        if self.generative_learning:
-            gen_y = gen_y_history
-        else:
-            gen_y = None
+        gen_y = gen_y_history
 
         return outp, gen_y
 
@@ -136,13 +125,9 @@ class da_rnn:
         # X: batch_size x window_size x N_X_features
         # gen_hidden: batch_size x window_size x hidden_dim
 
-        if self.generative_learning:
-            # encoder_input = torch.cat((X, gen_hidden), dim=2)
-            # encoder_input = torch.cat((y_history, gen_hidden), dim=2)
-            encoder_input = gen_hidden
-            
-        else:
-            encoder_input = X
+        # encoder_input = torch.cat((X, gen_hidden), dim=2)
+        # encoder_input = torch.cat((y_history, gen_hidden), dim=2)
+        encoder_input = gen_hidden
 
         _, decoder_input = self.encoder(encoder_input)
 
@@ -161,23 +146,13 @@ class da_rnn:
 
         encoder_optimizer.zero_grad()
         decoder_optimizer.zero_grad()
-
-        if self.generative_learning:
             
-            gen_loss, disc_loss, gen_hidden, _, gen_y_history = train_iteration_WRCGAN(self.gan, X, y_history, gan_gen_optimizer, gan_disc_optimizer) # gen_y_history.shape = batch_size x input_window x n_forecast_features
-            y_pred, enc_dec_loss = self.train_iteration(X, gen_hidden[-1,:,:,:], y_history, y_target, loss_func) # encoder decoder loss
-            
-            loss = (1-gen_loss_weight)*enc_dec_loss + gen_loss_weight*gen_loss
-            loss.backward()
-            gan_gen_optimizer.step()
-            
-        else:
-            disc_loss = None
-            gen_loss = None
-            enc_dec_loss = None
-            gen_y_history = None
-            y_pred, loss = self.train_iteration(X, None, y_history, y_target, loss_func) # encoder decoder loss
-            loss.backward()
+        gen_loss, disc_loss, gen_hidden, _, gen_y_history = train_iteration_WRCGAN(self.gan, X, y_history, gan_gen_optimizer, gan_disc_optimizer) # gen_y_history.shape = batch_size x input_window x n_forecast_features
+        y_pred, enc_dec_loss = self.train_iteration(X, gen_hidden[-1,:,:,:], y_history, y_target, loss_func) # encoder decoder loss
+        
+        loss = (1-gen_loss_weight)*enc_dec_loss + gen_loss_weight*gen_loss
+        loss.backward()
+        gan_gen_optimizer.step()
 
         encoder_optimizer.step()
         decoder_optimizer.step()
@@ -199,18 +174,18 @@ def plot_real_vs_gen(y_real, y_gen):
 
 
 
-class DARNNForecaster(MultiStepForecaster):
+class GRRNNForecaster(MultiStepForecaster):
 
-  def __init__(self, input_size=1, output_size=1, hidden_size = 64, hidden_layers = 1, window_size=6, dropout=0.0, L1_coeff = 1.0, gan_disc_decay=0.0, generative = True):
+  def __init__(self, input_size=1, output_size=1, hidden_size = 64, hidden_layers = 1, window_size=6, dropout=0.0, L1_coeff = 1.0, gan_disc_decay=0.0):
 
-    super(DARNNForecaster, self).__init__()
+    super(GRRNNForecaster, self).__init__()
 
-    self.darnn = da_rnn(gs_input_size=input_size, fs_input_size=output_size, input_window = window_size
+    self.grrnn = gr_rnn(gs_input_size=input_size, fs_input_size=output_size, input_window = window_size
                     , cell_dimension = hidden_size, num_hidden_layers = hidden_layers, dropout = dropout
-                    , L1_coeff = L1_coeff, gan_disc_decay=gan_disc_decay, generative_learning = generative, device = self.device)
+                    , L1_coeff = L1_coeff, gan_disc_decay=gan_disc_decay, device = self.device)
 
   def trainable_parameters(self):
-    return self.darnn.trainable_parameters()
+    return self.grrnn.trainable_parameters()
 
 
   # Overrides 'train' of super-class
@@ -225,10 +200,10 @@ class DARNNForecaster(MultiStepForecaster):
 
     window_size = X_train.shape[1]
 
-    encoder_optimizer = optimizer_from_type(optimizer_type, self.darnn.encoder, learning_rate)
-    decoder_optimizer = optimizer_from_type(optimizer_type, self.darnn.decoder, learning_rate)
-    gan_gen_optimizer = optimizer_from_type(optimizer_type, self.darnn.gan.G, learning_rate)
-    gan_disc_optimizer = optimizer_from_type(optimizer_type, self.darnn.gan.D, gan_disc_learning_rate, self.darnn.gan_disc_decay)
+    encoder_optimizer = optimizer_from_type(optimizer_type, self.grrnn.encoder, learning_rate)
+    decoder_optimizer = optimizer_from_type(optimizer_type, self.grrnn.decoder, learning_rate)
+    gan_gen_optimizer = optimizer_from_type(optimizer_type, self.grrnn.gan.G, learning_rate)
+    gan_disc_optimizer = optimizer_from_type(optimizer_type, self.grrnn.gan.D, gan_disc_learning_rate, self.grrnn.gan_disc_decay)
 
     epoch_losses = []
     epoch_gen_losses = []
@@ -244,10 +219,7 @@ class DARNNForecaster(MultiStepForecaster):
       forecast_horizon = y_train.shape[1]-window_size
       y_pred = torch.empty((y_train.shape[0], forecast_horizon, y_train.shape[2]), device=self.get_device())
 
-      if self.darnn.generative_learning:
-        y_gen = torch.empty((y_train.shape[0], window_size, y_train.shape[2]), device=self.get_device())
-      else:
-        y_gen = None;
+      y_gen = torch.empty((y_train.shape[0], window_size, y_train.shape[2]), device=self.get_device())
       
       while batch_start < X_train.shape[0]:
 
@@ -255,24 +227,22 @@ class DARNNForecaster(MultiStepForecaster):
         X_train_batch = X_train[batch_start:batch_end]
         y_train_batch = y_train[batch_start:batch_end]
 
-        y_pred_batch, loss, gen_loss, disc_loss, y_gen_batch = self.darnn.train_batch(X_train_batch, y_train_batch[:,:window_size,:], y_train_batch[:,window_size:,:], encoder_optimizer, decoder_optimizer, gan_gen_optimizer, gan_disc_optimizer, gen_loss_weight)
+        y_pred_batch, loss, gen_loss, disc_loss, y_gen_batch = self.grrnn.train_batch(X_train_batch, y_train_batch[:,:window_size,:], y_train_batch[:,window_size:,:], encoder_optimizer, decoder_optimizer, gan_gen_optimizer, gan_disc_optimizer, gen_loss_weight)
 
         y_pred[batch_start:batch_end,:] = y_pred_batch
 
         batch_losses.append(loss.item())
 
-        if self.darnn.generative_learning:
-          y_gen[batch_start:batch_end,:] = y_gen_batch
-          batch_gen_losses.append(gen_loss.item())
-          batch_disc_losses.append(disc_loss.item())
+        y_gen[batch_start:batch_end,:] = y_gen_batch
+        batch_gen_losses.append(gen_loss.item())
+        batch_disc_losses.append(disc_loss.item())
 
         batch_start = batch_end
 
       epoch_loss = np.mean(batch_losses)
 
-      if self.darnn.generative_learning:
-        epoch_gen_loss = np.mean(batch_gen_losses)
-        epoch_disc_loss = np.mean(batch_disc_losses)
+      epoch_gen_loss = np.mean(batch_gen_losses)
+      epoch_disc_loss = np.mean(batch_disc_losses)
 
       epoch_losses.append(epoch_loss.item())
 
@@ -280,7 +250,7 @@ class DARNNForecaster(MultiStepForecaster):
       # Debugging:
       if verbose:
         if epoch % (num_epochs // 10) == 0:
-          if self.darnn.generative_learning:
+          if self.grrnn.generative_learning:
             print('epoch {}, loss {}, gen_loss {}, disc_loss {}'.format(epoch, epoch_loss, epoch_gen_loss, epoch_disc_loss), end='\r\r')
             plot_real_vs_gen(y_train[:,:window_size,:], y_gen)
           else:
@@ -298,7 +268,7 @@ class DARNNForecaster(MultiStepForecaster):
     window_size = X_test.shape[1]
     y_history = y_test[:,:window_size,:]
     forecast_horizon = y_test.shape[1]-window_size
-    y_pred,_ = self.darnn.predict_overlapping(X_test, y_history, forecast_horizon)
+    y_pred,_ = self.grrnn.predict_overlapping(X_test, y_history, forecast_horizon)
     
     y_target = y_test[:,window_size:,:]
 
@@ -321,7 +291,7 @@ class DARNNForecaster(MultiStepForecaster):
 
     for valid_fld in fld_range:
 
-      self.darnn.reset_weights(verbose)
+      self.grrnn.reset_weights(verbose)
 
       # Training
 
