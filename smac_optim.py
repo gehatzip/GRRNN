@@ -8,7 +8,7 @@ from smac.facade.smac_bb_facade import SMAC4BB
 from smac.facade.smac_hpo_facade import SMAC4HPO
 from smac.scenario.scenario import Scenario
 
-from darnn import GRRNNForecaster
+from grrnn import GRRNNForecaster
 
 from utils import error_metric_func, window_series, unwindow_series, fold, series_split, plot_real_vs_predicted, calc_all_error_metrics
 
