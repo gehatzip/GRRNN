@@ -45,7 +45,7 @@ class SMACModelTrainTestRunner:
         return self.tae(config, self.forecast_ts_train, self.target_ts_train, self.forecast_ts_test, self.target_ts_test, self.forecast_horizon, False)
 
 
-def hyperparam_space_from_file(filename):
+def hyperparam_space_from_file(filename, verbose = False):
 
     f = open(filename, 'r')
 
@@ -70,36 +70,64 @@ def hyperparam_space_from_file(filename):
 
                     if n_words > 3:
                         config_space[words[0]].append(words[3])
-                        print('{}: {} - {}, default: {}'.format(words[0], words[1], words[2], words[3]))
+                        print('{}: {} - {}, default: {}'.format(words[0], words[1], words[2], words[3])) if verbose else None
                     else:
-                        print('{}: {} - {}'.format(words[0], words[1], words[2]))
+                        print('{}: {} - {}'.format(words[0], words[1], words[2])) if verbose else None
                 else:
-                    print('{}: {}'.format(words[0], words[1]))
+                    print('{}: {}'.format(words[0], words[1])) if verbose else None
 
     return config_space
 
 
-def get_initial_config_space(hparam_space_file = 'configuration_space.txt'):
+def append_float_hyperparameter_range(configspace, hparam, hparam_range):
+    if len(hparam_range) > 2:
+        configspace.add_hyperparameter(UniformFloatHyperparameter(hparam, float(hparam_range[0]), float(hparam_range[1]), default_value=float(hparam_range[2])))
+    else:
+        configspace.add_hyperparameter(Constant(hparam, float(hparam_range[0])))
 
-    cs = hyperparam_space_from_file(hparam_space_file)
+def append_int_hyperparameter_range(configspace, hparam, hparam_range):
+    if len(hparam_range) > 2:
+        configspace.add_hyperparameter(UniformIntegerHyperparameter(hparam, int(hparam_range[0]), int(hparam_range[1]), default_value=int(hparam_range[2])))
+    else:
+        configspace.add_hyperparameter(Constant(hparam, int(hparam_range[0])))
+
+
+
+def get_initial_config_space(hparam_space_file = 'configuration_space.txt', verbose = False):
+
+    cs = hyperparam_space_from_file(hparam_space_file, verbose)
 
     configspace = ConfigurationSpace()
 
-    configspace.add_hyperparameter(UniformFloatHyperparameter('learning_rate', float(cs['learning_rate'][0]), float(cs['learning_rate'][1]), default_value=float(cs['learning_rate'][2])))
-    configspace.add_hyperparameter(UniformIntegerHyperparameter('batch_size', int(cs['batch_size'][0]), int(cs['batch_size'][1]), default_value=int(cs['batch_size'][2])))
-    configspace.add_hyperparameter(UniformIntegerHyperparameter('num_epochs', int(cs['num_epochs'][0]), int(cs['num_epochs'][1]), default_value=int(cs['num_epochs'][2])))
-    
-    configspace.add_hyperparameter(UniformIntegerHyperparameter('hidden_dim', int(cs['hidden_dim'][0]), int(cs['hidden_dim'][1]), default_value=int(cs['hidden_dim'][2])))
+    append_float_hyperparameter_range(configspace, 'learning_rate', cs['learning_rate'])
 
-    configspace.add_hyperparameter(UniformIntegerHyperparameter('window_size', int(cs['window_size'][0]), int(cs['window_size'][1]), default_value=int(cs['window_size'][2])))
-
-    configspace.add_hyperparameter(Constant('hidden_layers', int(cs['hidden_layers'][0])))
+    append_int_hyperparameter_range(configspace, 'batch_size', cs['batch_size'])
+    append_int_hyperparameter_range(configspace, 'num_epochs', cs['num_epochs'])
+    append_int_hyperparameter_range(configspace, 'hidden_dim', cs['hidden_dim'])
+    append_int_hyperparameter_range(configspace, 'window_size', cs['window_size'])
+    append_int_hyperparameter_range(configspace, 'hidden_layers', cs['hidden_layers'])
 
     configspace.add_hyperparameter(Constant('gen_loss_weight', float(cs['gen_loss_weight'][0])))
-    configspace.add_hyperparameter(UniformFloatHyperparameter('gan_disc_learning_rate', float(cs['gan_disc_learning_rate'][0]), float(cs['gan_disc_learning_rate'][1]), default_value=float(cs['gan_disc_learning_rate'][2])))
-    configspace.add_hyperparameter(UniformFloatHyperparameter('dropout', float(cs['dropout'][0]), float(cs['dropout'][1]), default_value=float(cs['dropout'][2])))
-    configspace.add_hyperparameter(UniformFloatHyperparameter('L1_coeff', float(cs['L1_coeff'][0]), float(cs['L1_coeff'][1]), default_value=float(cs['L1_coeff'][2])))
-    configspace.add_hyperparameter(UniformFloatHyperparameter('gan_disc_decay', float(cs['gan_disc_decay'][0]), float(cs['gan_disc_decay'][1]), default_value=float(cs['gan_disc_decay'][2])))
+
+    if 'gan_disc_learning_rate' in cs:
+        append_float_hyperparameter_range(configspace, 'gan_disc_learning_rate', cs['gan_disc_learning_rate'])
+    else:
+        append_float_hyperparameter_range(configspace, 'gan_disc_learning_rate',  [0,0])
+
+    if 'dropout' in cs:
+        append_float_hyperparameter_range(configspace, 'dropout', cs['dropout'])
+    else:
+        append_float_hyperparameter_range(configspace, 'dropout', [0.0])
+    
+    if 'L1_coeff' in cs:
+        append_float_hyperparameter_range(configspace, 'L1_coeff', cs['L1_coeff'])
+    else:
+        append_float_hyperparameter_range(configspace, 'L1_coeff', [0.0])
+
+    if 'gan_disc_decay' in cs:
+        append_float_hyperparameter_range(configspace, 'gan_disc_decay', cs['gan_disc_decay'])
+    else:
+        append_float_hyperparameter_range(configspace, 'gan_disc_decay', [0.0])
 
     configspace.add_hyperparameter(Constant('optimizer', cs['optimizer'][0]))
 
@@ -149,7 +177,7 @@ def config_cross_validation_train(config, forecast_ts, target_ts, forecast_horiz
 
 def smac_scenario():
 
-    configspace = get_initial_config_space()
+    configspace = get_initial_config_space(verbose=True)
 
     # Provide meta data for the optimization
     scenario = Scenario({

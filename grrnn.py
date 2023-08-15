@@ -203,7 +203,9 @@ class GRRNNForecaster(MultiStepForecaster):
     encoder_optimizer = optimizer_from_type(optimizer_type, self.grrnn.encoder, learning_rate)
     decoder_optimizer = optimizer_from_type(optimizer_type, self.grrnn.decoder, learning_rate)
     gan_gen_optimizer = optimizer_from_type(optimizer_type, self.grrnn.gan.G, learning_rate)
-    gan_disc_optimizer = optimizer_from_type(optimizer_type, self.grrnn.gan.D, gan_disc_learning_rate, self.grrnn.gan_disc_decay)
+    # gan_disc_optimizer = optimizer_from_type(optimizer_type, self.grrnn.gan.D, gan_disc_learning_rate, self.grrnn.gan_disc_decay) # Separate learning rate for discriminator
+    gan_disc_optimizer = optimizer_from_type(optimizer_type, self.grrnn.gan.D, learning_rate, self.grrnn.gan_disc_decay)
+    
 
     epoch_losses = []
     epoch_gen_losses = []
