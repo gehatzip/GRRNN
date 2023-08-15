@@ -45,36 +45,63 @@ class SMACModelTrainTestRunner:
         return self.tae(config, self.forecast_ts_train, self.target_ts_train, self.forecast_ts_test, self.target_ts_test, self.forecast_horizon, False)
 
 
-def get_initial_config_space():
+def hyperparam_space_from_file(filename):
+
+    f = open(filename, 'r')
+
+    config_space = {}
+
+    with open(filename, 'r') as f:
+
+        lines = f.readlines()
+
+        for line in lines: 
+            
+            words = line.strip().split()
+
+            n_words = len(words)
+
+            if n_words > 1:
+                config_space[words[0]] = []
+                config_space[words[0]].append(words[1])
+
+                if n_words > 2:
+                    config_space[words[0]].append(words[2])
+
+                    if n_words > 3:
+                        config_space[words[0]].append(words[3])
+                        print('{}: {} - {}, default: {}'.format(words[0], words[1], words[2], words[3]))
+                    else:
+                        print('{}: {} - {}'.format(words[0], words[1], words[2]))
+                else:
+                    print('{}: {}'.format(words[0], words[1]))
+
+    return config_space
+
+
+def get_initial_config_space(hparam_space_file = 'configuration_space.txt'):
+
+    cs = hyperparam_space_from_file(hparam_space_file)
 
     configspace = ConfigurationSpace()
 
-    configspace.add_hyperparameter(UniformFloatHyperparameter('learning_rate', 0.01, 0.05, default_value=0.02))
-    configspace.add_hyperparameter(UniformIntegerHyperparameter('batch_size', 16, 32, default_value=24))
-    configspace.add_hyperparameter(UniformIntegerHyperparameter('num_epochs', 10, 70, default_value=50))
+    configspace.add_hyperparameter(UniformFloatHyperparameter('learning_rate', float(cs['learning_rate'][0]), float(cs['learning_rate'][1]), default_value=float(cs['learning_rate'][2])))
+    configspace.add_hyperparameter(UniformIntegerHyperparameter('batch_size', int(cs['batch_size'][0]), int(cs['batch_size'][1]), default_value=int(cs['batch_size'][2])))
+    configspace.add_hyperparameter(UniformIntegerHyperparameter('num_epochs', int(cs['num_epochs'][0]), int(cs['num_epochs'][1]), default_value=int(cs['num_epochs'][2])))
     
-    configspace.add_hyperparameter(UniformIntegerHyperparameter('hidden_dim', 24, 64, default_value=48))
+    configspace.add_hyperparameter(UniformIntegerHyperparameter('hidden_dim', int(cs['hidden_dim'][0]), int(cs['hidden_dim'][1]), default_value=int(cs['hidden_dim'][2])))
 
-    # configspace.add_hyperparameter(Constant('window_size', 7))
-    configspace.add_hyperparameter(UniformIntegerHyperparameter('window_size', 7, 14, default_value=10))
+    configspace.add_hyperparameter(UniformIntegerHyperparameter('window_size', int(cs['window_size'][0]), int(cs['window_size'][1]), default_value=int(cs['window_size'][2])))
 
-    """
-    # 'hidden_layers' is excluded as hyper-parameters because the comparable models have RNNs with a single hidden layer
-    configspace.add_hyperparameter(UniformIntegerHyperparameter('hidden_layers', 1, 4, default_value=1))
-    """
-    configspace.add_hyperparameter(Constant('hidden_layers', 1))
+    configspace.add_hyperparameter(Constant('hidden_layers', int(cs['hidden_layers'][0])))
 
-    # configspace.add_hyperparameter(UniformFloatHyperparameter('gen_loss_weight', 0.1, 0.9, default_value=0.5))
-    configspace.add_hyperparameter(Constant('gen_loss_weight', 0.5))
-    configspace.add_hyperparameter(UniformFloatHyperparameter('gan_disc_learning_rate', 0.01, 0.05, 0.02))
-    configspace.add_hyperparameter(UniformFloatHyperparameter('dropout', 0.01, 0.4, default_value=0.2))
-    configspace.add_hyperparameter(UniformFloatHyperparameter('L1_coeff', 0.1, 1.0, default_value=0.5))
-    configspace.add_hyperparameter(UniformFloatHyperparameter('gan_disc_decay', 0.0, 0.1, default_value=0.01))
+    configspace.add_hyperparameter(Constant('gen_loss_weight', float(cs['gen_loss_weight'][0])))
+    configspace.add_hyperparameter(UniformFloatHyperparameter('gan_disc_learning_rate', float(cs['gan_disc_learning_rate'][0]), float(cs['gan_disc_learning_rate'][1]), default_value=float(cs['gan_disc_learning_rate'][2])))
+    configspace.add_hyperparameter(UniformFloatHyperparameter('dropout', float(cs['dropout'][0]), float(cs['dropout'][1]), default_value=float(cs['dropout'][2])))
+    configspace.add_hyperparameter(UniformFloatHyperparameter('L1_coeff', float(cs['L1_coeff'][0]), float(cs['L1_coeff'][1]), default_value=float(cs['L1_coeff'][2])))
+    configspace.add_hyperparameter(UniformFloatHyperparameter('gan_disc_decay', float(cs['gan_disc_decay'][0]), float(cs['gan_disc_decay'][1]), default_value=float(cs['gan_disc_decay'][2])))
 
-    """
-    configspace.add_hyperparameter(CategoricalHyperparameter('optimizer', choices=['SGD', 'Adam', 'Adagrad'], default_value='Adam'))
-    """
-    configspace.add_hyperparameter(Constant('optimizer', 'Adam'))
+    configspace.add_hyperparameter(Constant('optimizer', cs['optimizer'][0]))
 
     return configspace
 
