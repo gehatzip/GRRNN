@@ -1,5 +1,7 @@
 The current repository contains source code that showcases the GRRNN model for Causal Time-series Forecasting.
 The starting point for optimizing the hyperparameters, training and testing the model is the script 'run.py'.
+Sample datasets are included in 'datasets' folder. For each dataset there is a corresponding 'source.txt' file with
+a link from which the datasets were obtained.
 
 Command-line options:
  --dataset [ETD|SML2010|AirQuality|energyco|poll]
