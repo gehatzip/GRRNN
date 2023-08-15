@@ -1,5 +1,3 @@
-*.txt
 *.pt
 __pycache__/
-datasets/
 smac3-output*/

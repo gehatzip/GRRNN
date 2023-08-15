@@ -1,0 +1,8 @@
+learning_rate 0.01 0.05 0.02
+batch_size 16 32 24
+num_epochs 10 70 50
+hidden_dim 24 64 48
+window_size 7 14 10
+hidden_layers 1
+gen_loss_weight 0.5
+optimizer Adam
