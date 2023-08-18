@@ -107,7 +107,6 @@ def get_initial_config_space(hparam_space_file = 'configuration_space.txt', verb
     append_int_hyperparameter_range(configspace, 'window_size', cs['window_size'])
     append_int_hyperparameter_range(configspace, 'hidden_layers', cs['hidden_layers'])
 
-    configspace.add_hyperparameter(Constant('gen_loss_weight', float(cs['gen_loss_weight'][0])))
     configspace.add_hyperparameter(Constant('optimizer', cs['optimizer'][0]))
 
     return configspace
@@ -264,9 +263,6 @@ def smac_config_from_dict(cfg_dict):
 
     if 'hidden_layers' in config.keys():
         config['hidden_layers'] = int(cfg_dict['hidden_layers'])
-
-    if 'gen_loss_weight' in config.keys():
-        config['gen_loss_weight'] = float(cfg_dict['gen_loss_weight'])
 
     return config
 
