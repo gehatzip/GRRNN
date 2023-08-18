@@ -25,14 +25,10 @@ class gr_rnn:
     
     def __init__(self, gs_input_size, fs_input_size, input_window
                     , learning_rate = 0.01, cell_dimension = 64, num_hidden_layers = 1
-                    , dropout=0.0, L1_coeff = 1.0, gan_disc_decay=0.0, device = torch.device('cpu')):
-
-        # gs_input_size: Number of features of the generating series.
-        # fs_input_size: Number of features of the series to be forecasted.
-
-        self.fs_input_size = fs_input_size # Forecast series: Number of features
-        self.input_window = input_window # Input window is stored as parameter in the GRRNN because the encoder attention layer is sized by that.
-        self.gan_disc_decay = gan_disc_decay
+                    , device = torch.device('cpu')):
+        
+        self.fs_input_size = fs_input_size
+        self.input_window = input_window
 
         self.decoder = decoders.decoder(encoder_hidden_size = cell_dimension,
                             decoder_hidden_size = cell_dimension,
@@ -40,20 +36,9 @@ class gr_rnn:
 
         self.encoder = encoders.encoder(input_size = cell_dimension, hidden_size = cell_dimension
                               , input_window = input_window, num_hidden_layers = num_hidden_layers, device = device)
-
-
-        # GAN input_size = X_input_size + y_input_size + noise_size (chosen equal to: y_input_size)
-        # GAN hidden_size = X_input_size + y_input_size
         
         self.gan = WRCGAN(input_size = fs_input_size, cond_in_size = gs_input_size, noise_size = fs_input_size
-                          , hidden_size = cell_dimension, num_hidden_layers = num_hidden_layers, dropout = dropout, L1_coeff = L1_coeff, device = device)
-
-        # Module-level parallelism
-        """
-        self.gan = nn.DataParallel(self.gan)
-        self.encoder = nn.DataParallel(self.encoder) # Implements data parallelism at the module level. This container parallelizes the application of the given module by splitting the input across the specified devices by chunking in the batch dimension (other objects will be copied once per device).
-        self.decoder = nn.DataParallel(self.decoder)
-        """
+                          , hidden_size = cell_dimension, num_hidden_layers = num_hidden_layers, device = device)
 
         self.figsize=(18, 6)
         self.dpi=80
@@ -76,12 +61,6 @@ class gr_rnn:
       return params
 
     def predict_overlapping(self, X, y_history, forecast_horizon):
-        
-        """
-        This function is used for testing.
-        'y_history' can be removed worsening the performance. 
-        If so then the windowing of the target series for testing only made inside 'prepare_windowed_series()' can be the same as models without Generative branch!
-        """
 
         input_window = X.shape[1]
 
@@ -92,17 +71,9 @@ class gr_rnn:
         noise = noise_like_sequence(y_history.shape, X.device)
         cond = cgan_cond(X)
 
-        gen_input = torch.cat((cond, noise), dim=2) # batch_size x input_window x (fs_input_size + noise_input_size(=fs_input_size) )
-        ## gen_input = cond # batch_size x input_window x fs_input_size
+        gen_input = torch.cat((cond, noise), dim=2)
         gen_y_history, gen_hidden, gen_cell = self.gan.G(gen_input) 
-        # gen_y_history: batch_size x input_window x n_forecast_features
-        # gen_hidden: n_layers x batch_size x input_window x hidden_dim
-
-        # Concatenate the GAN-generated y_history with X and pass to the encoder
-        # encoder_input = torch.cat((X, gen_hidden[-1,:,:,:]), dim=2)
-        # encoder_input = torch.cat((y_history, gen_hidden[-1,:,:,:]), dim=2)
         encoder_input = gen_hidden[-1,:,:,:]
-
 
         _, decoder_input = self.encoder(encoder_input)
 
@@ -110,7 +81,6 @@ class gr_rnn:
         gen_y_target = None
 
         y_history_last = y_history[:,-1,:]
-        # y_history_last = torch.zeros(y_history.shape[0], y_history.shape[2], device=self.device)
 
         outp,_ = self.decoder(decoder_input, y_history_last, forecast_horizon, gen_y_target)
 
@@ -120,19 +90,11 @@ class gr_rnn:
 
  
 
-    def train_iteration(self, X, gen_hidden, y_history, y_target, criterion):
+    def train_iteration(self, X, gen_hidden, y_history_last, y_target, criterion):
 
-        # X: batch_size x window_size x N_X_features
-        # gen_hidden: batch_size x window_size x hidden_dim
-
-        # encoder_input = torch.cat((X, gen_hidden), dim=2)
-        # encoder_input = torch.cat((y_history, gen_hidden), dim=2)
         encoder_input = gen_hidden
 
         _, decoder_input = self.encoder(encoder_input)
-
-        y_history_last = y_history[:,-1,:]
-        # y_history_last = torch.zeros(y_history.shape[0], y_history.shape[2], device=self.device)
 
         y_pred, loss = self.decoder(input_encoded = decoder_input, y_history_last = y_history_last, fc_horizon = y_target.shape[1], y_target = y_target, loss_func = criterion)
         
@@ -146,9 +108,11 @@ class gr_rnn:
 
         encoder_optimizer.zero_grad()
         decoder_optimizer.zero_grad()
-            
+
+        y_history_last = y_history[:,-1,:]
+
         gen_loss, disc_loss, gen_hidden, _, gen_y_history = train_iteration_WRCGAN(self.gan, X, y_history, gan_gen_optimizer, gan_disc_optimizer) # gen_y_history.shape = batch_size x input_window x n_forecast_features
-        y_pred, enc_dec_loss = self.train_iteration(X, gen_hidden[-1,:,:,:], y_history, y_target, loss_func) # encoder decoder loss
+        y_pred, enc_dec_loss = self.train_iteration(X, gen_hidden[-1,:,:,:], y_history_last, y_target, loss_func) # encoder decoder loss
         
         loss = (1-gen_loss_weight)*enc_dec_loss + gen_loss_weight*gen_loss
         loss.backward()
@@ -160,51 +124,28 @@ class gr_rnn:
         return y_pred, loss, gen_loss, disc_loss, gen_y_history
 
 
-
-def plot_real_vs_gen(y_real, y_gen):
-
-  for i in range(y_real.shape[2]):
-    print('i ' + str(i))
-    
-    y_gen_pred_feat_i = torch.cat((y_gen[:,:,i].unsqueeze(-1), y_real[:,:,i].unsqueeze(-1)), dim=2)
-    y_gen_pred_feat_i_np = y_gen_pred_feat_i.detach().cpu().numpy()
-
-    plot_windowed(y_gen_pred_feat_i_np)
-    plt.show()
-
-
-
 class GRRNNForecaster(MultiStepForecaster):
 
-  def __init__(self, input_size=1, output_size=1, hidden_size = 64, hidden_layers = 1, window_size=6, dropout=0.0, L1_coeff = 1.0, gan_disc_decay=0.0):
+  def __init__(self, input_size=1, output_size=1, hidden_size = 64, hidden_layers = 1, window_size=6):
 
     super(GRRNNForecaster, self).__init__()
 
     self.grrnn = gr_rnn(gs_input_size=input_size, fs_input_size=output_size, input_window = window_size
-                    , cell_dimension = hidden_size, num_hidden_layers = hidden_layers, dropout = dropout
-                    , L1_coeff = L1_coeff, gan_disc_decay=gan_disc_decay, device = self.device)
+                    , cell_dimension = hidden_size, num_hidden_layers = hidden_layers, device = self.device)
 
   def trainable_parameters(self):
     return self.grrnn.trainable_parameters()
 
 
   # Overrides 'train' of super-class
-  def train(self, X_train, y_train, config, verbose = True):
-
-    batch_size = config['batch_size']
-    num_epochs = config['num_epochs']
-    learning_rate = config['learning_rate']
-    optimizer_type = config['optimizer_type']
-    gan_disc_learning_rate = config['gan_disc_learning_rate']
-    gen_loss_weight = config['gen_loss_weight']
+  def train(self, X_train, y_train, batch_size = 16, num_epochs = 100, learning_rate = 0.01, optimizer_type = 'SGD', verbose = True, gen_loss_weight = 0.5):
 
     window_size = X_train.shape[1]
 
     encoder_optimizer = optimizer_from_type(optimizer_type, self.grrnn.encoder, learning_rate)
     decoder_optimizer = optimizer_from_type(optimizer_type, self.grrnn.decoder, learning_rate)
     gan_gen_optimizer = optimizer_from_type(optimizer_type, self.grrnn.gan.G, learning_rate)
-    # gan_disc_optimizer = optimizer_from_type(optimizer_type, self.grrnn.gan.D, gan_disc_learning_rate, self.grrnn.gan_disc_decay) # Separate learning rate for discriminator
-    gan_disc_optimizer = optimizer_from_type(optimizer_type, self.grrnn.gan.D, learning_rate, self.grrnn.gan_disc_decay)
+    gan_disc_optimizer = optimizer_from_type(optimizer_type, self.grrnn.gan.D, learning_rate)
     
 
     epoch_losses = []
@@ -248,17 +189,6 @@ class GRRNNForecaster(MultiStepForecaster):
 
       epoch_losses.append(epoch_loss.item())
 
-      """
-      # Debugging:
-      if verbose:
-        if epoch % (num_epochs // 10) == 0:
-          if self.grrnn.generative_learning:
-            print('epoch {}, loss {}, gen_loss {}, disc_loss {}'.format(epoch, epoch_loss, epoch_gen_loss, epoch_disc_loss), end='\r\r')
-            plot_real_vs_gen(y_train[:,:window_size,:], y_gen)
-          else:
-            print('epoch {}, loss {}'.format(epoch, epoch_loss), end='\r')
-      """
-
     return y_pred, epoch_losses
 
 
@@ -278,8 +208,9 @@ class GRRNNForecaster(MultiStepForecaster):
 
     return y_pred, loss
 
+
   # Overrides 'train_cross_validation' of super-class
-  def train_cross_validation(self, X_folds, y_folds, config, verbose=True, extra_data = None):
+  def train_cross_validation(self, X_folds, y_folds, batch_size = 16, num_epochs = 100, learning_rate = 0.01, optimizer_type = 'SGD', verbose=True, extra_data = None):
 
     fld_range = range(len(X_folds))
 
@@ -306,7 +237,7 @@ class GRRNNForecaster(MultiStepForecaster):
       X_train_rand = X_train[rand_perm_idx,:,:]
       y_train_rand = y_train[rand_perm_idx,:]
 
-      self.train(X_train_rand, y_train_rand, config, verbose = verbose)
+      self.train(X_train_rand, y_train_rand, batch_size, num_epochs, learning_rate, verbose = verbose)
 
       # Validation
 

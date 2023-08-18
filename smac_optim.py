@@ -108,35 +108,14 @@ def get_initial_config_space(hparam_space_file = 'configuration_space.txt', verb
     append_int_hyperparameter_range(configspace, 'hidden_layers', cs['hidden_layers'])
 
     configspace.add_hyperparameter(Constant('gen_loss_weight', float(cs['gen_loss_weight'][0])))
-
-    if 'gan_disc_learning_rate' in cs:
-        append_float_hyperparameter_range(configspace, 'gan_disc_learning_rate', cs['gan_disc_learning_rate'])
-    else:
-        append_float_hyperparameter_range(configspace, 'gan_disc_learning_rate',  [0,0])
-
-    if 'dropout' in cs:
-        append_float_hyperparameter_range(configspace, 'dropout', cs['dropout'])
-    else:
-        append_float_hyperparameter_range(configspace, 'dropout', [0.0])
-    
-    if 'L1_coeff' in cs:
-        append_float_hyperparameter_range(configspace, 'L1_coeff', cs['L1_coeff'])
-    else:
-        append_float_hyperparameter_range(configspace, 'L1_coeff', [0.0])
-
-    if 'gan_disc_decay' in cs:
-        append_float_hyperparameter_range(configspace, 'gan_disc_decay', cs['gan_disc_decay'])
-    else:
-        append_float_hyperparameter_range(configspace, 'gan_disc_decay', [0.0])
-
     configspace.add_hyperparameter(Constant('optimizer', cs['optimizer'][0]))
 
     return configspace
 
 
-def create_model(window_size, forecast_horizon, input_size, output_size, hidden_size, hidden_layers, activ_func=None, dropout=0.0, L1_coeff=1.0, gan_disc_decay=0.0):
+def create_model(window_size, forecast_horizon, input_size, output_size, hidden_size, hidden_layers, activ_func=None):
 
-    model = GRRNNForecaster(input_size, output_size, hidden_size, hidden_layers, window_size, dropout, L1_coeff, gan_disc_decay)
+    model = GRRNNForecaster(input_size, output_size, hidden_size, hidden_layers, window_size)
 
     return model
 
@@ -170,7 +149,7 @@ def config_cross_validation_train(config, forecast_ts, target_ts, forecast_horiz
         activ_func = config['activ_func']
 
     model = create_model(X_folds[0].shape[1], forecast_horizon, X_folds[0].shape[2], y_folds[0].shape[-1]
-                         , int(config['hidden_dim']), config['hidden_layers'], activ_func, config['dropout'], config['L1_coeff'], config['gan_disc_decay'])
+                         , int(config['hidden_dim']), config['hidden_layers'], activ_func)
 
     return model.train_cross_validation(X_folds, y_folds, config, verbose=verbose, extra_data = extra_data)
 
@@ -289,18 +268,6 @@ def smac_config_from_dict(cfg_dict):
     if 'gen_loss_weight' in config.keys():
         config['gen_loss_weight'] = float(cfg_dict['gen_loss_weight'])
 
-    if 'gan_disc_learning_rate' in config.keys():
-        config['gan_disc_learning_rate'] = float(cfg_dict['gan_disc_learning_rate'])
-
-    if 'dropout' in config.keys():
-        config['dropout'] = float(cfg_dict['dropout'])
-
-    if 'L1_coeff' in config.keys():
-        config['L1_coeff'] = float(cfg_dict['L1_coeff'])
-
-    if 'gan_disc_decay' in config.keys():
-        config['gan_disc_decay'] = float(cfg_dict['gan_disc_decay'])
-
     return config
 
 
@@ -334,7 +301,7 @@ def smac_train_test(config, forecast_ts_train, target_ts_train, forecast_ts_test
     hidden_layers = config['hidden_layers']
 
     model = create_model(X_train.shape[1], forecast_horizon, X_train.shape[2], y_train.shape[-1]
-                         , config['hidden_dim'], hidden_layers, activ_func, config['dropout'], config['L1_coeff'], config['gan_disc_decay'])
+                         , config['hidden_dim'], hidden_layers, activ_func)
 
     if extra_data is not None:
         extra_data['model'] = model
@@ -345,8 +312,7 @@ def smac_train_test(config, forecast_ts_train, target_ts_train, forecast_ts_test
     X_train_tensor = torch.from_numpy(X_train).type(torch.FloatTensor).to(model.get_device())
     y_train_tensor = torch.from_numpy(y_train).type(torch.FloatTensor).to(model.get_device())
 
-    
-    model.train(X_train_tensor, y_train_tensor, config, verbose)
+    model.train(X_train_tensor, y_train_tensor, config['batch_size'], config['num_epochs'], config['learning_rate'], config['optimizer'], verbose)
 
     X_test_tensor = torch.from_numpy(X_test).type(torch.FloatTensor).to(model.get_device())
     y_test_tensor = torch.from_numpy(y_test).type(torch.FloatTensor).to(model.get_device())
@@ -393,7 +359,7 @@ def smac_train(config, forecast_ts_train, target_ts_train, forecast_horizon, ver
     hidden_layers = config['hidden_layers']
 
     model = create_model(X_train.shape[1], forecast_horizon, X_train.shape[2], y_train.shape[-1]
-                         , config['hidden_dim'], hidden_layers, activ_func, config['dropout'], config['L1_coeff'], config['gan_disc_decay'])
+                         , config['hidden_dim'], hidden_layers, activ_func)
 
     if verbose:
         print('Trainable parameters: ' + str(model.trainable_parameters()))
@@ -401,10 +367,11 @@ def smac_train(config, forecast_ts_train, target_ts_train, forecast_horizon, ver
     X_train_tensor = torch.from_numpy(X_train).type(torch.FloatTensor).to(model.get_device())
     y_train_tensor = torch.from_numpy(y_train).type(torch.FloatTensor).to(model.get_device())
 
-    
-    model.train(X_train_tensor, y_train_tensor, config, verbose)
+    model.train(X_train_tensor, y_train_tensor, config['batch_size'], config['num_epochs'], config['learning_rate'], config['optimizer'], verbose)
 
     torch.save(model, model_save_file)
+
+    return model
 
 
 def smac_test(config, forecast_ts_test, target_ts_test, forecast_horizon, verbose = False, extra_data = None, model_save_file = 'model.pt'):

@@ -9,8 +9,6 @@ def get_best_device():
     device = torch.device('cuda')
   else:
     device = torch.device('cpu')
-  
-  # device = torch.device('cpu')
 
   return device
 
@@ -38,7 +36,7 @@ def reset_weights(model, verbose=True):
             module.reset_parameters()
 
 
-def optimizer_from_type(optimizer_type, model, learning_rate, weight_decay=0.0):
+def optimizer_from_type(optimizer_type, model, learning_rate):
 
   if hasattr(model, '__iter__'):
     parameters = []
@@ -48,10 +46,10 @@ def optimizer_from_type(optimizer_type, model, learning_rate, weight_decay=0.0):
       parameters = model.parameters()
 
   if optimizer_type == 'Adam':
-    return torch.optim.Adam(parameters, lr =learning_rate, weight_decay = weight_decay)
+    return torch.optim.Adam(parameters, lr =learning_rate)
   elif optimizer_type == 'Adagrad':
-    return torch.optim.Adagrad(parameters, lr =learning_rate, weight_decay = weight_decay)
+    return torch.optim.Adagrad(parameters, lr =learning_rate)
   else: # SGD by default
-    return torch.optim.SGD(parameters, lr =learning_rate, weight_decay = weight_decay)
+    return torch.optim.SGD(parameters, lr =learning_rate)
 
 

@@ -81,7 +81,10 @@ def main():
         smac_train_validation_optimize(forecast_ts_train, target_ts_train, forecast_ts_valid, target_ts_valid, forecast_horizon)
     elif mode == 'train':
         optimized_config = smac_config_from_file('optimized_configuration.txt')
-        smac_train(optimized_config, forecast_ts_train_valid, target_ts_train_valid, forecast_horizon, verbose = False, model_save_file = 'model.pt')
+        model = smac_train(optimized_config, forecast_ts_train_valid, target_ts_train_valid, forecast_horizon, verbose = False, model_save_file = 'model.pt')
+        # extra_data = {}
+        # smac_test(optimized_config, forecast_ts_test, target_ts_test, forecast_horizon, verbose = False, extra_data = extra_data)
+        # smac_plot(optimized_config, target_ts, target_ts_train_valid, target_scaler, extra_data)
     elif mode == 'test':
         extra_data = {}
         optimized_config = smac_config_from_file('optimized_configuration.txt')
