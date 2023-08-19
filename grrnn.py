@@ -102,7 +102,7 @@ class gr_rnn:
 
 
 
-    def train_batch(self, X, y_history, y_target, encoder_optimizer, decoder_optimizer, gan_gen_optimizer=None, gan_disc_optimizer=None, gen_loss_weight=0.5):
+    def train_batch(self, X, y_history, y_target, encoder_optimizer, decoder_optimizer, gan_gen_optimizer=None, gan_disc_optimizer=None):
 
         loss_func = nn.MSELoss()
 
@@ -114,7 +114,7 @@ class gr_rnn:
         gen_loss, disc_loss, gen_hidden, _, gen_y_history = train_iteration_WRCGAN(self.gan, X, y_history, gan_gen_optimizer, gan_disc_optimizer) # gen_y_history.shape = batch_size x input_window x n_forecast_features
         y_pred, enc_dec_loss = self.train_iteration(X, gen_hidden[-1,:,:,:], y_history_last, y_target, loss_func) # encoder decoder loss
         
-        loss = (1-gen_loss_weight)*enc_dec_loss + gen_loss_weight*gen_loss
+        loss = enc_dec_loss + gen_loss
         loss.backward()
         gan_gen_optimizer.step()
 
@@ -138,7 +138,7 @@ class GRRNNForecaster(MultiStepForecaster):
 
 
   # Overrides 'train' of super-class
-  def train(self, X_train, y_train, batch_size = 16, num_epochs = 100, learning_rate = 0.01, optimizer_type = 'SGD', verbose = True, gen_loss_weight = 0.5):
+  def train(self, X_train, y_train, batch_size = 16, num_epochs = 100, learning_rate = 0.01, optimizer_type = 'SGD', verbose = True):
 
     window_size = X_train.shape[1]
 
@@ -170,7 +170,8 @@ class GRRNNForecaster(MultiStepForecaster):
         X_train_batch = X_train[batch_start:batch_end]
         y_train_batch = y_train[batch_start:batch_end]
 
-        y_pred_batch, loss, gen_loss, disc_loss, y_gen_batch = self.grrnn.train_batch(X_train_batch, y_train_batch[:,:window_size,:], y_train_batch[:,window_size:,:], encoder_optimizer, decoder_optimizer, gan_gen_optimizer, gan_disc_optimizer, gen_loss_weight)
+        y_pred_batch, loss, gen_loss, disc_loss, y_gen_batch = self.grrnn.train_batch(X_train_batch, y_train_batch[:,:window_size,:], y_train_batch[:,window_size:,:]
+                                                                                      , encoder_optimizer, decoder_optimizer, gan_gen_optimizer, gan_disc_optimizer)
 
         y_pred[batch_start:batch_end,:] = y_pred_batch
 

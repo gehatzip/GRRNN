@@ -375,7 +375,7 @@ def read_poll_all_parties(project_root_path=''):
 
 
 def read_desc(path, party, filename, dfname):
-  desc_file = path+party+filename
+  desc_file = path + 'twitter_descriptors/' + party + filename
   desc = pd.read_csv(desc_file, index_col=False, header=0, lineterminator='\n')
   desc.rename(columns={'Unnamed: 0':'date', 'offensive-1\r':'offensive-1'}, inplace=True)
 

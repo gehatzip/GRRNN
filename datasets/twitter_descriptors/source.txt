@@ -1,0 +1,3 @@
+This dataset was produced by extracting sentiment, polarity, and other descriptors using NLP techniques from the following dataset:
+https://www.kaggle.com/paulrohan2020/2016-usa-presidential-election-tweets61m-rows
+
